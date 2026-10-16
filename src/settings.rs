@@ -6,11 +6,10 @@ use crate::config::{self, Config};
 use crate::i18n::{german, key_name, t, windows_language};
 use crate::models::{self, CATALOG, Gpu};
 use crate::ui::{self, Fonts, STATIC_PATH, STATIC_PLAIN, set_text};
-use crate::{audio, autostart, log, setup, tray};
+use crate::{audio, autostart, log, setup, theme, tray};
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
-use windows_sys::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
-use windows_sys::Win32::Graphics::Gdi::{HDC, SetTextColor};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::UI::Controls::{BST_CHECKED, EM_SETCUEBANNER};
 use windows_sys::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
@@ -18,9 +17,10 @@ use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTOCHECKBOX, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, CB_ADDSTRING,
     CB_GETCURSEL, CB_RESETCONTENT, CB_SETCURSEL, CB_SETDROPPEDWIDTH, CBS_DROPDOWNLIST, DC_HASDEFID,
-    DM_GETDEFID, DefWindowProcW, DestroyWindow, ES_AUTOHSCROLL, ES_NUMBER, IsDialogMessageW, MSG,
-    SW_RESTORE, SW_SHOW, SW_SHOWNORMAL, SendMessageW, SetForegroundWindow, ShowWindow, WM_CLOSE,
-    WM_COMMAND, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WS_BORDER, WS_TABSTOP, WS_VSCROLL,
+    DM_GETDEFID, DefWindowProcW, DestroyWindow, DispatchMessageW, ES_AUTOHSCROLL, ES_NUMBER,
+    GetMessageW, IsDialogMessageW, MSG, PostQuitMessage, SW_RESTORE, SW_SHOW, SW_SHOWNORMAL,
+    SendMessageW, SetForegroundWindow, ShowWindow, TranslateMessage, WM_CLOSE, WM_COMMAND,
+    WM_DESTROY, WM_DPICHANGED, WS_BORDER, WS_TABSTOP, WS_VSCROLL,
 };
 
 const ID_SAVE: usize = 1; // IDOK: Enter saves
@@ -29,9 +29,6 @@ const ID_MODEL_FILE: usize = 10;
 const ID_FOLDER: usize = 11;
 const ID_DOWNLOAD: usize = 12;
 const ID_CONFIG_FILE: usize = 13;
-
-const ERROR_TEXT: COLORREF = 0x001C_2BC4;
-const QUIET_TEXT: COLORREF = 0x0060_6060;
 
 /// Input languages offered besides "like Windows" and "detect"; Whisper knows many more,
 /// which can still be set in the config file.
@@ -124,6 +121,8 @@ thread_local! {
     static CONTROLS: Cell<Option<Controls>> = const { Cell::new(None) };
     // Borrowed only briefly: window calls may re-enter the window procedure.
     static STATE: RefCell<State> = RefCell::new(State::default());
+    // Test helper --settings: the window runs without the tray and ends the process when closed.
+    static ALONE: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Remembers what the settings window needs; call on the tray thread at startup.
@@ -133,6 +132,23 @@ pub fn init(config_path: &Path, config: &Config, gpu: Option<Gpu>) {
         config: config.clone(),
         gpu,
     }));
+}
+
+/// Test helper `--settings`: only this window with its own message loop, also while Mentis runs.
+pub fn run_alone(config_path: &Path, config: &Config, gpu: Option<Gpu>) {
+    ALONE.set(true);
+    init(config_path, config, gpu);
+    open();
+    let mut msg: MSG = unsafe { std::mem::zeroed() };
+    while unsafe { GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) } > 0 {
+        if dialog_message(&msg) {
+            continue;
+        }
+        unsafe {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
 }
 
 /// Configuration file and the settings Mentis runs with.
@@ -396,6 +412,7 @@ fn create(config: &Config) -> Result<Controls, String> {
     refresh_models(&controls, &config.model.to_string_lossy());
     CONTROLS.set(Some(controls));
     layout(&controls, unsafe { GetDpiForSystem() }, None);
+    theme::apply(window);
     Ok(controls)
 }
 
@@ -829,6 +846,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     let Some(c) = CONTROLS.get() else {
         return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
     };
+    let label = |control: HWND| {
+        if control == c.status && STATE.with_borrow(|s| s.error) {
+            Some(theme::colors().error)
+        } else if control == c.note {
+            Some(theme::colors().quiet)
+        } else {
+            None
+        }
+    };
+    if let Some(result) = ui::theme_message(hwnd, msg, wparam, lparam, label) {
+        return result;
+    }
     match msg {
         WM_COMMAND => {
             match wparam & 0xffff {
@@ -845,15 +874,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             0
         }
         DM_GETDEFID => ((DC_HASDEFID as usize) << 16 | ID_SAVE) as LRESULT,
-        WM_CTLCOLORSTATIC => {
-            let (dc, control) = (wparam as HDC, lparam as HWND);
-            if control == c.status && STATE.with_borrow(|s| s.error) {
-                unsafe { SetTextColor(dc, ERROR_TEXT) };
-            } else if control == c.note {
-                unsafe { SetTextColor(dc, QUIET_TEXT) };
-            }
-            ui::static_background(dc)
-        }
         WM_DPICHANGED => {
             // SAFETY: lparam points to the suggested window rectangle.
             let suggested = unsafe { &*(lparam as *const RECT) };
@@ -868,6 +888,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_DESTROY => {
             CONTROLS.set(None);
             STATE.set(State::default());
+            if ALONE.get() {
+                unsafe { PostQuitMessage(0) };
+            }
             0
         }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },

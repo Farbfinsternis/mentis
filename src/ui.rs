@@ -1,14 +1,13 @@
 //! Shared pieces of Mentis' windows (setup, settings): creation, fonts, layout, dialogs.
 
 use crate::i18n::{german, t};
-use crate::{config, download, log, models};
+use crate::{config, download, log, models, theme};
 use std::path::{Path, PathBuf};
 use std::sync::Once;
-use windows_sys::Win32::Foundation::{HWND, LRESULT, RECT, WPARAM};
+use windows_sys::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
-    COLOR_WINDOW, CreateFontIndirectW, DeleteObject, GetMonitorInfoW, GetSysColor,
-    GetSysColorBrush, HBRUSH, HDC, HFONT, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
-    SetBkColor,
+    CreateFontIndirectW, DeleteObject, GetMonitorInfoW, HDC, HFONT, MONITOR_DEFAULTTONEAREST,
+    MONITORINFO, MonitorFromWindow,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Controls::Dialogs::{
@@ -21,9 +20,10 @@ use windows_sys::Win32::UI::HiDpi::{AdjustWindowRectExForDpi, SystemParametersIn
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, GetWindowTextLengthW, GetWindowTextW, ICON_BIG, ICON_SMALL, IDC_ARROW,
     IMAGE_ICON, LR_DEFAULTSIZE, LoadCursorW, LoadImageW, NONCLIENTMETRICSW, RegisterClassW,
-    SPI_GETNONCLIENTMETRICS, SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW, WM_SETFONT,
-    WM_SETICON, WNDCLASSW, WNDPROC, WS_CAPTION, WS_CHILD, WS_EX_CONTROLPARENT, WS_MINIMIZEBOX,
-    WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE,
+    SPI_GETNONCLIENTMETRICS, SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW,
+    WM_CTLCOLORBTN, WM_CTLCOLOREDIT, WM_CTLCOLORLISTBOX, WM_CTLCOLORSTATIC, WM_NOTIFY, WM_SETFONT,
+    WM_SETICON, WM_SETTINGCHANGE, WNDCLASSW, WNDPROC, WS_CAPTION, WS_CHILD, WS_EX_CONTROLPARENT,
+    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE,
 };
 
 /// Fixed-size dialog-like window.
@@ -52,6 +52,7 @@ pub fn text(hwnd: HWND) -> String {
 pub fn new_window(class: &str, title: &str, wndproc: WNDPROC) -> Result<HWND, String> {
     static COMMON_CONTROLS: Once = Once::new();
     COMMON_CONTROLS.call_once(|| unsafe {
+        theme::init();
         InitCommonControlsEx(&INITCOMMONCONTROLSEX {
             dwSize: size_of::<INITCOMMONCONTROLSEX>() as u32,
             dwICC: ICC_PROGRESS_CLASS | ICC_STANDARD_CLASSES,
@@ -65,7 +66,7 @@ pub fn new_window(class: &str, title: &str, wndproc: WNDPROC) -> Result<HWND, St
             hInstance: instance,
             lpszClassName: class.as_ptr(),
             hCursor: LoadCursorW(std::ptr::null_mut(), IDC_ARROW),
-            hbrBackground: GetSysColorBrush(COLOR_WINDOW),
+            hbrBackground: theme::window_brush(),
             ..std::mem::zeroed()
         };
         // Fails harmlessly when the class exists from an earlier window.
@@ -202,11 +203,26 @@ pub fn fit_window(window: HWND, width: i32, height: i32, dpi: u32, origin: Optio
     }
 }
 
-/// WM_CTLCOLORSTATIC: labels and check boxes on the white window background.
-pub fn static_background(dc: HDC) -> LRESULT {
-    unsafe {
-        SetBkColor(dc, GetSysColor(COLOR_WINDOW));
-        GetSysColorBrush(COLOR_WINDOW) as HBRUSH as LRESULT
+/// Colors, dark drawing and app mode changes shared by Mentis' windows; `text` picks a special
+/// text color for a label (errors, hints). None: not a theme message, handle it as usual.
+pub fn theme_message(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    text: impl Fn(HWND) -> Option<COLORREF>,
+) -> Option<LRESULT> {
+    let dc = wparam as HDC;
+    match msg {
+        WM_CTLCOLORSTATIC | WM_CTLCOLORBTN => Some(theme::static_colors(dc, text(lparam as HWND))),
+        WM_CTLCOLOREDIT | WM_CTLCOLORLISTBOX => Some(theme::field_colors(dc)),
+        WM_NOTIFY => theme::custom_draw(lparam),
+        WM_SETTINGCHANGE if theme::is_mode_change(lparam) => {
+            theme::refresh();
+            theme::apply(hwnd);
+            None
+        }
+        _ => None,
     }
 }
 

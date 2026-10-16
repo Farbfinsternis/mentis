@@ -19,6 +19,7 @@ mod models;
 mod overlay;
 mod settings;
 mod setup;
+mod theme;
 mod transcriber;
 mod tray;
 mod ui;
@@ -36,12 +37,13 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     MessageBoxW, TranslateMessage,
 };
 
-const TEST_HELPERS: [&str; 5] = [
+const TEST_HELPERS: [&str; 6] = [
     "--transcribe",
     "--paste-test",
     "--devices",
     "--download",
     "--setup",
+    "--settings",
 ];
 
 fn main() {
@@ -251,6 +253,12 @@ fn run_test_helper(args: &[String], config_path: &Path) -> Result<(), String> {
             Some(model) => println!("Modell: {}", model.display()),
             None => println!("Ohne Modell geschlossen."),
         }
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--settings") {
+        // Shows only the settings window, also while Mentis is running.
+        let gpu = transcriber::init_backends(&config)?;
+        settings::run_alone(config_path, &config, gpu);
         return Ok(());
     }
     if args.iter().any(|a| a == "--paste-test") {

@@ -82,7 +82,7 @@ cargo clippy --release --locked --target x86_64-pc-windows-msvc --all-targets --
 cargo test --release --locked --target x86_64-pc-windows-msvc
 ```
 
-Test helpers: `mentis.exe --devices`, `--transcribe file.wav`, `--paste-test`, `--download <model>`, `--setup`, `--config <path>`. Append `| Out-Host` in PowerShell.
+Test helpers: `mentis.exe --devices`, `--transcribe file.wav`, `--paste-test`, `--download <model>`, `--setup`, `--settings`, `--config <path>`. Append `| Out-Host` in PowerShell. `MENTIS_THEME=light` or `dark` overrides the Windows app mode.
 
 ## Credits
 

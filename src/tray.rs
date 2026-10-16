@@ -22,7 +22,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     MF_SEPARATOR, MF_STRING, MessageBoxW, PostMessageW, PostQuitMessage, RegisterClassW,
     RegisterWindowMessageW, SM_CXSMICON, SW_SHOWNORMAL, SetForegroundWindow, TPM_NONOTIFY,
     TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_CLOSE, WM_COMMAND, WM_CONTEXTMENU,
-    WM_DESTROY, WM_NULL, WNDCLASSW, WS_POPUP,
+    WM_DESTROY, WM_NULL, WM_SETTINGCHANGE, WNDCLASSW, WS_POPUP,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,6 +116,9 @@ pub fn create(hotkey: &str) -> Result<(), String> {
             std::io::Error::last_os_error()
         ));
     }
+    // The menu follows the Windows app mode (light or dark).
+    crate::theme::init();
+    crate::theme::allow_menus(hwnd);
     WINDOW.store(hwnd as isize, Ordering::Relaxed);
     TASKBAR_CREATED.store(
         unsafe { RegisterWindowMessageW(wide("TaskbarCreated").as_ptr()) },
@@ -468,6 +471,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             WM_DESTROY => {
                 PostQuitMessage(0);
                 0
+            }
+            WM_SETTINGCHANGE if crate::theme::is_mode_change(lparam) => {
+                crate::theme::refresh();
+                DefWindowProcW(hwnd, msg, wparam, lparam)
             }
             _ if msg != 0 && msg == TASKBAR_CREATED.load(Ordering::Relaxed) => {
                 // Explorer restarted (or started after Mentis): the icon has to be added again.

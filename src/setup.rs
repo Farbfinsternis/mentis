@@ -5,14 +5,13 @@ use crate::download::{self, Failure};
 use crate::i18n::{german, t};
 use crate::models::{self, CATALOG, Gpu, Model};
 use crate::ui::{self, Fonts, STATIC_PATH, STATIC_PLAIN, set_text};
-use crate::{config, log};
+use crate::{config, log, theme};
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use windows_sys::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
-use windows_sys::Win32::Graphics::Gdi::{HDC, SetTextColor};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::UI::Controls::{PBM_SETPOS, PBM_SETRANGE32, PROGRESS_CLASSW};
 use windows_sys::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
@@ -20,8 +19,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     BM_GETCHECK, BM_SETCHECK, BS_AUTORADIOBUTTON, BS_DEFPUSHBUTTON, BS_PUSHBUTTON, DC_HASDEFID,
     DM_GETDEFID, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW, IsDialogMessageW,
     MSG, PostMessageW, PostQuitMessage, SW_SHOW, SendMessageW, SetForegroundWindow, ShowWindow,
-    TranslateMessage, WM_APP, WM_CLOSE, WM_COMMAND, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED,
-    WS_GROUP, WS_TABSTOP,
+    TranslateMessage, WM_APP, WM_CLOSE, WM_COMMAND, WM_DESTROY, WM_DPICHANGED, WS_GROUP,
+    WS_TABSTOP,
 };
 
 /// IDOK and IDCANCEL, so Enter and Esc work through IsDialogMessage.
@@ -33,9 +32,6 @@ const ID_RADIO: usize = 100;
 
 const WM_PROGRESS: u32 = WM_APP + 20;
 const WM_FINISHED: u32 = WM_APP + 21;
-
-const ERROR_TEXT: COLORREF = 0x001C_2BC4; // rgb(196, 43, 28)
-const QUIET_TEXT: COLORREF = 0x0060_6060;
 
 #[derive(Clone, Copy)]
 struct Controls {
@@ -146,6 +142,7 @@ pub fn run(
         CONTROLS.set(Some(controls));
         update_source(&controls);
         layout(&controls, GetDpiForSystem(), None);
+        theme::apply(window);
         ShowWindow(window, SW_SHOW);
         SetForegroundWindow(window);
 
@@ -426,6 +423,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     let Some(c) = CONTROLS.get() else {
         return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
     };
+    let label = |control: HWND| {
+        if control == c.status && STATE.with_borrow(|s| s.error) {
+            Some(theme::colors().error)
+        } else if control == c.source {
+            Some(theme::colors().quiet)
+        } else {
+            None
+        }
+    };
+    if let Some(result) = ui::theme_message(hwnd, msg, wparam, lparam, label) {
+        return result;
+    }
     match msg {
         WM_COMMAND => {
             let id = wparam & 0xffff;
@@ -454,15 +463,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             let result = unsafe { Box::from_raw(lparam as *mut Result<PathBuf, Failure>) };
             finished(&c, *result);
             0
-        }
-        WM_CTLCOLORSTATIC => {
-            let (dc, control) = (wparam as HDC, lparam as HWND);
-            if control == c.status && STATE.with_borrow(|s| s.error) {
-                unsafe { SetTextColor(dc, ERROR_TEXT) };
-            } else if control == c.source {
-                unsafe { SetTextColor(dc, QUIET_TEXT) };
-            }
-            ui::static_background(dc)
         }
         WM_DPICHANGED => {
             // SAFETY: lparam points to the suggested window rectangle.

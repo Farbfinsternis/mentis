@@ -45,54 +45,54 @@ impl Default for Config {
 
 fn template() -> String {
     format!(
-        r#"# Mentis-Konfiguration. Nach Änderungen Mentis neu starten.
+        r#"# Mentis configuration. Restart Mentis after changes.
 
-# Spracherkennungsmodell (GGUF für transcribe.cpp). Leer = das passende Modell aus dem
-# Modellordner (Mentis lädt es beim ersten Start herunter).
+# Speech recognition model (GGUF for transcribe.cpp). Empty = the matching model from the
+# model folder (Mentis downloads it on first start).
 model = ''
 
-# Modellordner für heruntergeladene Modelle. Leer = {}
+# Folder for downloaded models. Empty = {}
 models_dir = ''
 
-# Eingabesprache als ISO-Code ("de", "en", ...), "auto" oder leer = Windows-Sprache.
+# Input language as ISO code ("de", "en", ...), "auto", or empty = Windows language.
 language = ""
 
-# Diktiertaste: Halten = sprechen, kurz antippen = Aufnahme läuft bis zum nächsten Antippen.
-# Möglich: RightCtrl, RightShift, CapsLock, ScrollLock, Pause, Insert, F1 ... F24
+# Dictation key: hold = speak, short tap = record until the next tap.
+# Possible: RightCtrl, RightShift, CapsLock, ScrollLock, Pause, Insert, F1 ... F24
 hotkey = "RightCtrl"
 
-# "auto" (GPU wenn möglich, sonst CPU), "vulkan" oder "cpu".
+# "auto" (GPU if possible, else CPU), "vulkan" or "cpu".
 backend = "auto"
 
-# "clipboard" (Strg+V, Zwischenablage wird wiederhergestellt) oder "type" (Zeichen einzeln tippen).
+# "clipboard" (Ctrl+V, the clipboard is restored) or "type" (types character by character).
 insert = "clipboard"
 
-# Leer = Windows-Standardmikrofon, sonst ein Teil des Gerätenamens, z. B. "USB".
+# Empty = Windows default microphone, else part of the device name, e.g. "USB".
 microphone = ""
 
-# Optionaler Kontext für Whisper, z. B. Namen und Fachbegriffe: "ComfyUI, Vulkan, Mentis".
+# Optional context for Whisper, e.g. names and terms: "ComfyUI, Vulkan, Mentis".
 prompt = ""
 
-# Schreibstil: "clean" (ohne Füllwörter wie „äh“) oder "exact" (alles, was gesagt wird).
+# Writing style: "clean" (without fillers like "uh") or "exact" (everything that is said).
 style = "clean"
 
-# Kurze Signaltöne bei Start/Ende der Aufnahme.
+# Short sounds when recording starts and ends.
 sounds = true
 
-# Kleines Anzeigefeld über der Taskleiste während Aufnahme und Erkennung.
+# Small panel above the taskbar while recording and recognizing.
 overlay = true
 
-# Erkannten Text schon während des Sprechens im Anzeigefeld zeigen (nur mit GPU).
+# Show recognized text in the panel while speaking (GPU only).
 live_preview = true
 
-# Leerzeichen nach dem eingefügten Text, damit aufeinanderfolgende Diktate nicht zusammenkleben.
+# Space after the inserted text, so consecutive dictations do not stick together.
 trailing_space = true
 
-# Maximale Aufnahmedauer in Sekunden.
+# Longest recording in seconds.
 max_seconds = 120
 
-# Einmal am Tag auf github.com nachsehen, ob es eine neue Version gibt (nur ein Hinweis im Tray,
-# es wird nichts heruntergeladen oder installiert).
+# Ask github.com once a day whether a new version exists (only a hint in the tray; nothing is
+# downloaded or installed).
 update_check = true
 "#,
         crate::models::default_dir().display()
@@ -276,7 +276,7 @@ mod tests {
         assert_eq!(config.model, PathBuf::from(r"D:\KI\it's.gguf"));
         assert_eq!(config.models_dir, PathBuf::new());
         assert_eq!(text.matches("model =").count(), 1);
-        assert!(text.contains("# Spracherkennungsmodell"));
+        assert!(text.contains("# Speech recognition model"));
 
         let line = format!("models_dir = {}", toml::Value::String(r"E:\Modelle".into()));
         let config: Config = toml::from_str(&with_line(&text, "models_dir", &line)).unwrap();

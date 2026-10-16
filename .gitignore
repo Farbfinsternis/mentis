@@ -1,0 +1,9 @@
+/target/
+/.local/
+/dist/
+*.gguf
+*.ggml
+*.wav
+/Plan.md
+/FEEDBACK.md
+/docs/

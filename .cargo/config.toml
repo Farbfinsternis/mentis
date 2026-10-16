@@ -1,0 +1,7 @@
+# Static C runtime for the EXE and all DLLs: Mentis needs no VC++ Redistributable.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[env]
+# Applies to the CMake build of transcribe.cpp/ggml (transcribe-cpp-sys).
+TRANSCRIBE_CMAKE_ARGS = "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"

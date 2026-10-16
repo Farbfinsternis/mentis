@@ -1,0 +1,50 @@
+[package]
+name = "mentis"
+version = "0.8.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+license = "MIT"
+description = "Offline dictation for Windows: hold a key, speak, the text appears in the active field"
+
+[dependencies]
+# dynamic-backends: transcribe.dll and the ggml DLLs sit next to the EXE; CPU variants (per
+# instruction set) and Vulkan are modules loaded at runtime.
+transcribe-cpp = { version = "=0.4.0", default-features = false, features = ["dynamic-backends"] }
+cpal = "=0.18.2"
+hound = "=3.5.1"
+serde = { version = "=1.0.229", features = ["derive"] }
+toml = "=1.1.8"
+windows-sys = { version = "=0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Gdi",
+    "Win32_Networking_WinHttp",
+    "Win32_Security",
+    "Win32_Security_Cryptography",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Console",
+    "Win32_System_DataExchange",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Controls",
+    "Win32_UI_Controls_Dialogs",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[features]
+default = ["vulkan"]
+# GPU module ggml-vulkan.dll; building it needs the Vulkan SDK. Without it Mentis runs on the CPU.
+vulkan = ["transcribe-cpp/vulkan"]
+
+[build-dependencies]
+# Program icon, manifest and version info (rc.exe from the Windows SDK).
+embed-resource = "=3.0.11"

@@ -1,0 +1,12 @@
+Mentis {VERSION} – Lizenzen / Licenses
+
+Mentis ist freie Software unter der MIT-Lizenz (erster Abschnitt unten).
+Mentis is free software under the MIT License (first section below).
+
+mentis.exe und die DLLs in diesem Ordner enthalten außerdem die folgenden
+Komponenten. Ihre Lizenzen erlauben die Weitergabe, solange diese Texte beiliegen.
+mentis.exe and the DLLs in this folder also contain the components below. Their
+licenses permit redistribution as long as these texts are included.
+
+Sprachmodelle sind nicht enthalten (siehe README.txt).
+Speech models are not included (see README.txt).
